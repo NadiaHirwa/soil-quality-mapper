@@ -189,3 +189,19 @@ OUTLIER_MAD_FACTOR = 15.0    # assumption: c (works for ~9.5 < c < ~22.9)
 
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"   # git-ignored inspection files
 CLEAN_CSV_PREVIEW_PATH = OUTPUTS_DIR / "soil_samples_clean.csv"
+
+# ---------------------------------------------------------------------------
+# Interpolation (Stage 6)
+# ---------------------------------------------------------------------------
+GRID_RESOLUTION_M = 5.0      # assumption: map grid spacing (101 x 81 points)
+
+# Candidate IDW powers, compared by leave-one-out cross-validation. The best
+# one (lowest RMSE) is chosen per property when the app runs.
+IDW_POWERS = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
+
+# A target this close to a sample counts as "on" the sample: return its value.
+IDW_EXACT_TOLERANCE_M = 1e-6
+
+# Design decision: values flagged as outliers are left OUT of interpolation
+# by default (they are suspicious); the app may switch this off.
+EXCLUDE_OUTLIERS_FROM_MAPS = True

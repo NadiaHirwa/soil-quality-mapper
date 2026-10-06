@@ -18,6 +18,7 @@ Run as a script to write a clean CSV for inspection into outputs/:
     .venv\\Scripts\\python -m src.cleaning
 """
 
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -25,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 from src import config
-from src.geo import latlon_to_metres, metres_to_latlon
+from src.geo import latlon_to_metres, metres_to_latlon, pairwise_distances
 
 COORDINATE_COLUMNS = ["latitude", "longitude"]
 
@@ -304,16 +305,21 @@ def local_outlier_scores(
     """
     values = np.asarray(values, dtype=float)
     has_value = ~np.isnan(values)
-    residuals = np.full(len(values), np.nan)
 
-    for i in np.flatnonzero(has_value):
-        distances = np.hypot(x - x[i], y - y[i])
-        distances[i] = np.inf            # a sample is not its own neighbour
-        distances[~has_value] = np.inf   # skip samples without a value
-        nearest = np.argsort(distances)[:k]
-        nearest = nearest[np.isfinite(distances[nearest])]
-        if len(nearest):
-            residuals[i] = values[i] - np.median(values[nearest])
+    # Distance from every sample to every other sample, as an (n, n) table.
+    distances = pairwise_distances(np.column_stack([x, y]), np.column_stack([x, y]))
+    np.fill_diagonal(distances, np.inf)   # a sample is not its own neighbour
+    distances[:, ~has_value] = np.inf     # skip samples without a value
+
+    # Row i of `nearest` holds the indices of sample i's k closest neighbours.
+    nearest = np.argsort(distances, axis=1)[:, :k]
+    neighbour_values = values[nearest]
+    too_far = ~np.isfinite(np.take_along_axis(distances, nearest, axis=1))
+    neighbour_values[too_far] = np.nan    # fewer than k neighbours with a value
+
+    with warnings.catch_warnings():       # a row of all-NaN neighbours -> NaN, quietly
+        warnings.simplefilter("ignore", RuntimeWarning)
+        residuals = values - np.nanmedian(neighbour_values, axis=1)
 
     r = residuals[~np.isnan(residuals)]
     mad = np.median(np.abs(r - np.median(r))) if len(r) else 0.0

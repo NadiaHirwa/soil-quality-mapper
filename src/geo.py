@@ -51,3 +51,22 @@ def latlon_to_metres(
     x_m = (np.asarray(lon) - origin_lon) * per_deg_lon
     y_m = (np.asarray(lat) - origin_lat) * per_deg_lat
     return x_m, y_m
+
+
+def pairwise_distances(a_xy: np.ndarray, b_xy: np.ndarray) -> np.ndarray:
+    """Distance in metres from every point in a_xy to every point in b_xy.
+
+    Args:
+        a_xy: Array of shape (n, 2) with columns x, y.
+        b_xy: Array of shape (m, 2) with columns x, y.
+
+    Returns:
+        Array of shape (n, m): entry [i, j] is the distance from a_xy[i] to b_xy[j].
+
+    No Python loops: NumPy "broadcasting" lines up an (n, 1) column against a
+    (1, m) row, so all n x m differences are computed in one step.
+    """
+    a_xy, b_xy = np.asarray(a_xy, dtype=float), np.asarray(b_xy, dtype=float)
+    dx = a_xy[:, 0][:, None] - b_xy[:, 0][None, :]
+    dy = a_xy[:, 1][:, None] - b_xy[:, 1][None, :]
+    return np.hypot(dx, dy)
