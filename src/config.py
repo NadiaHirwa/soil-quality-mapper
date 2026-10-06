@@ -197,7 +197,7 @@ GRID_RESOLUTION_M = 5.0      # assumption: map grid spacing (101 x 81 points)
 
 # Candidate IDW powers, compared by leave-one-out cross-validation. The best
 # one (lowest RMSE) is chosen per property when the app runs.
-IDW_POWERS = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
+IDW_POWERS = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
 
 # A target this close to a sample counts as "on" the sample: return its value.
 IDW_EXACT_TOLERANCE_M = 1e-6

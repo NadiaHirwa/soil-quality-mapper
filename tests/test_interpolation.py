@@ -162,3 +162,13 @@ def test_interpolated_maps_have_grid_shape_and_no_gaps(clean):
         surface = interpolate_property(clean, prop)
         assert surface.shape == grid_x.shape
         assert not np.isnan(surface).any()
+
+
+def test_best_power_is_inside_candidate_range_for_reference_data():
+    # If the best power were the largest candidate, a larger one might be
+    # better still, and the candidate list in config would be too short.
+    reference = pd.read_csv(config.REFERENCE_CSV_PATH, dtype=str, keep_default_na=False)
+    clean = clean_soil_data(reference)[0]
+    for prop in config.NUMERIC_COLUMNS:
+        xy, values = property_samples(clean, prop)
+        assert best_power(cross_validate(xy, values)) < max(config.IDW_POWERS), prop
