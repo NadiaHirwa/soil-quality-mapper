@@ -53,6 +53,8 @@ Libraries: Python, NumPy, Pandas, Matplotlib, Seaborn, Streamlit (lecturer appro
 - Only do the current stage. No extra features.
 - Explain each step before or after doing it so the group can defend it in the presentation.
 - Git: NEVER add "Co-Authored-By" lines or any AI attribution to commit messages or PR descriptions. Write short, plain commit messages. Only commit and push when asked.
+- Git: stage files by name (no `git add -A`), so nothing unexpected gets committed.
+- Save preview plots into `outputs/` inside the project (git-ignored, never committed).
 - Windows, PowerShell, with a `.venv` in the project folder (inside OneDrive). Run Python as `.venv\Scripts\python` (activation scripts may be blocked).
 
 ## Quality bar and teaching mode

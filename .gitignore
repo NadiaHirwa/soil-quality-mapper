@@ -5,3 +5,5 @@ venv/
 .vscode/
 .streamlit/secrets.toml
 .pytest_cache/
+*.png
+outputs/
