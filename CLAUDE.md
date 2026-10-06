@@ -32,7 +32,7 @@ Libraries: Python, NumPy, Pandas, Matplotlib, Seaborn, Streamlit (lecturer appro
 - Interpolation: Inverse Distance Weighting written in NumPy, which must handle a grid point that exactly matches a sample point.
 
 ## Structure
-`data/`, `src/` (`__init__.py`, `generate_data.py`, `cleaning.py`, `interpolation.py`, `fertility.py`, `plots.py`), `tests/`, `app.py` (Streamlit), `requirements.txt`, `README.md`, `.gitignore`
+`data/`, `src/` (`__init__.py`, `config.py`, `generate_data.py`, `cleaning.py`, `interpolation.py`, `fertility.py`, `plots.py`), `tests/`, `app.py` (Streamlit), `requirements.txt`, `README.md`, `.gitignore`
 
 ## Roadmap (one stage at a time; test each stage before moving on)
 1. Setup
