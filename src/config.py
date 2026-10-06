@@ -4,6 +4,8 @@ Every fixed number used by the project lives here, so it is easy to find,
 explain and change in one place.
 """
 
+from pathlib import Path
+
 # Size of the simulated field, in metres (x = east-west, y = north-south).
 FIELD_WIDTH_M = 500.0
 FIELD_HEIGHT_M = 400.0
@@ -60,3 +62,50 @@ SALINITY_STRIP_SIGMA_M = 30.0       # assumption: strip half-width scale
 PH_MIN = 0.0
 PH_MAX = 14.0
 CONCENTRATION_MIN = 0.0      # N, P and salinity cannot be negative
+
+# ---------------------------------------------------------------------------
+# Location (Stage 3b)
+#
+# SIMULATED location: a rounded point in Rwanda's Eastern Province, used only
+# to give the synthetic field realistic GPS coordinates. It is NOT a real farm.
+# Rwanda is south of the equator, so latitude is negative.
+# ---------------------------------------------------------------------------
+ORIGIN_LAT = -1.95           # south-west corner of the field (decimal degrees)
+ORIGIN_LON = 30.45
+
+# Local flat approximation (standard values, fine for a field-sized area).
+METRES_PER_DEG_LAT = 110_574.0
+METRES_PER_DEG_LON_AT_EQUATOR = 111_320.0  # multiply by cos(latitude)
+
+# ---------------------------------------------------------------------------
+# Sampling campaign (Stage 3b) - simulation assumptions
+# ---------------------------------------------------------------------------
+CAMPAIGN_START = "2026-03-02"  # Monday
+CAMPAIGN_END = "2026-03-06"    # Friday -> 5 weekdays, field crossed west to east
+
+# Fictional collector names (not real people).
+COLLECTORS = ["Alice Uwase", "Eric Mugisha", "Grace Ingabire"]
+
+# ---------------------------------------------------------------------------
+# Output format (Stage 3b)
+# ---------------------------------------------------------------------------
+# Decimal places, matching realistic GPS / lab reporting precision.
+ROUNDING = {
+    "latitude": 6,     # 1e-6 degree ~ 0.1 m
+    "longitude": 6,
+    "pH": 2,
+    "nitrogen": 1,
+    "phosphorus": 1,
+    "salinity": 2,
+}
+
+# Final column order of the dataset.
+COLUMNS = [
+    "sample_id", "latitude", "longitude", "pH", "nitrogen",
+    "phosphorus", "salinity", "sample_date", "collector",
+]
+
+# Paths are built from this file's location, so they work from any folder.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+REFERENCE_CSV_PATH = DATA_DIR / "soil_samples_reference.csv"

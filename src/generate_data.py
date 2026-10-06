@@ -2,13 +2,19 @@
 
 Stage 2: sampling locations (local metres).
 Stage 3a: soil values from spatial patterns (local metres).
-Latitude/longitude, dates, collectors and the CSV come in Stage 3b.
+Stage 3b: latitude/longitude, dates, collectors and the reference CSV.
+
+Run as a script to write the reference CSV:
+    .venv\\Scripts\\python -m src.generate_data
 """
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from src import config
+from src.geo import metres_to_latlon
 
 
 def make_sample_ids(n: int) -> list[str]:
@@ -166,3 +172,82 @@ def add_soil_values(points: pd.DataFrame, rng: np.random.Generator) -> pd.DataFr
     result["phosphorus"] = np.clip(phosphorus, config.CONCENTRATION_MIN, None)
     result["salinity"] = np.clip(salinity, config.CONCENTRATION_MIN, None)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Stage 3b: dates, collectors, final table and CSV
+# ---------------------------------------------------------------------------
+
+
+def campaign_days(start: str = config.CAMPAIGN_START, end: str = config.CAMPAIGN_END) -> list[str]:
+    """Return the weekdays (Mon-Fri) from start to end as ISO strings "YYYY-MM-DD"."""
+    return list(pd.bdate_range(start, end).strftime("%Y-%m-%d"))
+
+
+def assign_dates(x_m: np.ndarray, days: list[str], width: float = config.FIELD_WIDTH_M) -> list[str]:
+    """Give each sample a date: the team crosses the field from west to east.
+
+    The field is cut into equal north-south strips, one per day. With 5 days
+    and a 500 m field, day 1 covers x = 0-100 m, day 2 covers 100-200 m, ...
+    """
+    strip = (np.asarray(x_m) / width * len(days)).astype(int)
+    strip = np.minimum(strip, len(days) - 1)  # guard: x exactly at the east edge
+    return [days[i] for i in strip]
+
+
+def assign_collectors(
+    y_m: np.ndarray,
+    dates: list[str],
+    rng: np.random.Generator,
+    collectors: list[str] = config.COLLECTORS,
+    height: float = config.FIELD_HEIGHT_M,
+) -> list[str]:
+    """Give each sample a collector.
+
+    Each day the strip is split into south, middle and north bands, one per
+    collector. Which collector takes which band is shuffled every day with
+    rng, as a team rotating tasks would.
+    """
+    band = (np.asarray(y_m) / height * len(collectors)).astype(int)
+    band = np.minimum(band, len(collectors) - 1)  # guard: y exactly at the north edge
+
+    # One shuffled collector order per day, drawn in date order.
+    order_for_day = {day: rng.permutation(collectors) for day in sorted(set(dates))}
+    return [str(order_for_day[day][b]) for day, b in zip(dates, band)]
+
+
+def build_reference_dataset(seed: int = config.RANDOM_SEED) -> pd.DataFrame:
+    """Create the full clean dataset (9 columns, 100 rows) from one seed.
+
+    Steps: sampling points -> soil values -> lat/lon -> dates -> collectors
+    -> round -> select columns. All random draws use one generator, in a
+    fixed order, so the same seed always gives the same table.
+    """
+    rng = np.random.default_rng(seed)
+    samples = add_soil_values(jittered_grid_points(rng), rng)
+
+    lat, lon = metres_to_latlon(samples["x_m"], samples["y_m"])
+    samples["latitude"] = lat
+    samples["longitude"] = lon
+    samples["sample_date"] = assign_dates(samples["x_m"], campaign_days())
+    samples["collector"] = assign_collectors(samples["y_m"], samples["sample_date"].tolist(), rng)
+
+    # x_m and y_m are dropped here: a real dataset only has GPS coordinates.
+    return samples[config.COLUMNS].round(config.ROUNDING)
+
+
+def save_csv(df: pd.DataFrame, path: Path) -> None:
+    """Write a DataFrame to CSV with "\n" line endings (same file on every OS)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False, lineterminator="\n")
+
+
+def main() -> None:
+    """Generate the reference dataset and save it to data/."""
+    df = build_reference_dataset()
+    save_csv(df, config.REFERENCE_CSV_PATH)
+    print(f"Wrote {len(df)} rows to {config.REFERENCE_CSV_PATH}")
+
+
+if __name__ == "__main__":
+    main()
