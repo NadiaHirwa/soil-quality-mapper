@@ -3,8 +3,9 @@
 Stage 2: sampling locations (local metres).
 Stage 3a: soil values from spatial patterns (local metres).
 Stage 3b: latitude/longitude, dates, collectors and the reference CSV.
+Stage 4: a corrupted copy (raw CSV) and a log of every change.
 
-Run as a script to write the reference CSV:
+Run as a script to write all three data files:
     .venv\\Scripts\\python -m src.generate_data
 """
 
@@ -242,11 +243,192 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
     df.to_csv(path, index=False, lineterminator="\n")
 
 
+def read_csv_as_text(path: Path) -> pd.DataFrame:
+    """Read a CSV keeping every cell as the exact text in the file.
+
+    keep_default_na=False stops pandas turning "NA", "" etc. into NaN, so we
+    see the file exactly as a person opening it would.
+    """
+    return pd.read_csv(path, dtype=str, keep_default_na=False)
+
+
+# ---------------------------------------------------------------------------
+# Stage 4: corrupt a COPY of the reference data into a messy raw file
+# ---------------------------------------------------------------------------
+
+
+def format_number(value: float, column: str) -> str:
+    """Round a number to the column's precision and return it as text."""
+    return str(round(value, config.ROUNDING[column]))
+
+
+def corrupt_value(
+    problem_type: str, kind: str, value: str, column: str, rng: np.random.Generator
+) -> str:
+    """Return a corrupted version of one clean cell (all values are text).
+
+    Examples: ("messy_string", "decimal_comma", "6.5") -> "6,5"
+              ("impossible_value", "missing_decimal_point", "6.44") -> "644"
+    """
+    if problem_type == "missing_value":
+        return kind  # the kind is the marker itself, e.g. "NA" or ""
+
+    if kind == "extra_spaces":
+        return f"  {value} "
+    if kind == "decimal_comma":
+        return value.replace(".", ",")
+    if kind == "unit_in_cell":
+        return f"{value} {config.UNITS[column]}"
+
+    if kind == "missing_decimal_point":
+        return value.replace(".", "")
+    if kind == "negative":
+        return "-" + value
+
+    if kind == "times_factor":
+        return format_number(float(value) * config.OUTLIER_FACTOR, column)
+
+    if kind == "missing_minus":
+        return value.lstrip("-")
+
+    if kind == "date_dd_mm_yyyy":
+        return pd.Timestamp(value).strftime("%d/%m/%Y")
+    if kind == "date_long":
+        date = pd.Timestamp(value)
+        return f"{date.day} {date.strftime('%B %Y')}"  # e.g. "2 March 2026"
+
+    if kind == "name_lowercase":
+        return value.lower()
+    if kind == "name_extra_spaces":
+        return f" {value}  "
+    if kind == "name_initials":
+        first, last = value.split(" ", 1)
+        return f"{first[0]}. {last}"  # "Grace Ingabire" -> "G. Ingabire"
+
+    raise ValueError(f"Unknown corruption kind: {kind}")
+
+
+def pick_free_cell(
+    rows: np.ndarray,
+    columns: list[str],
+    used: set[tuple[int, str]],
+    rng: np.random.Generator,
+    preferred_row: int | None = None,
+    also_needs: str | None = None,
+) -> tuple[int, str]:
+    """Choose a (row, column) cell that has not been corrupted yet.
+
+    Only the chosen corrupted rows are considered. If preferred_row is given
+    and has a free cell, that row is used (this makes sure every chosen row
+    gets at least one problem). also_needs names a second column that must be
+    free in the same row (used by the lat/lon swap).
+    """
+    def is_free(r: int, c: str) -> bool:
+        return (r, c) not in used and (also_needs is None or (r, also_needs) not in used)
+
+    candidates = [(r, c) for r in rows for c in columns if is_free(r, c)]
+    preferred = [(r, c) for r, c in candidates if r == preferred_row]
+    options = preferred or candidates
+    row, column = options[rng.integers(len(options))]
+    return int(row), column
+
+
+def make_raw_dataset(
+    reference: pd.DataFrame,
+    seed: int = config.CORRUPTION_SEED,
+    rate: float = config.CORRUPTION_RATE,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Corrupt a copy of the reference table and log every change.
+
+    Args:
+        reference: The clean table, read as text (see read_csv_as_text).
+            It is NOT changed.
+        seed: Seed for the corruption's own random generator.
+        rate: Fraction of samples (rows) that get at least one problem.
+
+    Returns:
+        (raw, log): the messy table and the corruption log. In the log,
+        row_number counts data rows from 1; row 0 means the header.
+    """
+    rng = np.random.default_rng(seed)
+    raw = reference.copy()
+    log = []
+
+    def add_log(row: int, column: str, problem: str, original: str, corrupted: str) -> None:
+        sample_id = raw.at[row, "sample_id"] if row >= 0 else ""
+        log.append([sample_id, row + 1, column, problem, original, corrupted])
+
+    # Step 1: choose which rows will be corrupted.
+    n_rows = round(rate * len(raw))
+    rows = rng.choice(len(raw), size=n_rows, replace=False)
+
+    # Step 2: cell problems (types 2, 3, 4, 5, 7, 8), at most one per cell.
+    used: set[tuple[int, str]] = set()
+    plan = [config.CORRUPTION_PLAN[i] for i in rng.permutation(len(config.CORRUPTION_PLAN))]
+    for i, (problem, kind, columns) in enumerate(plan):
+        preferred = rows[i] if i < n_rows else None  # first n_rows jobs: one per row
+        also = "longitude" if kind == "swap_lat_lon" else None
+        row, column = pick_free_cell(rows, columns, used, rng, preferred, also)
+
+        if kind == "swap_lat_lon":
+            lat, lon = raw.at[row, "latitude"], raw.at[row, "longitude"]
+            raw.at[row, "latitude"], raw.at[row, "longitude"] = lon, lat
+            add_log(row, "latitude", problem, lat, lon)
+            add_log(row, "longitude", problem, lon, lat)
+            used.update({(row, "latitude"), (row, "longitude")})
+        else:
+            original = raw.at[row, column]
+            raw.at[row, column] = corrupt_value(problem, kind, original, column, rng)
+            add_log(row, column, problem, original, raw.at[row, column])
+            used.add((row, column))
+
+    # Step 3: duplicates (type 6), appended at the end like a second data entry.
+    n_dups = config.N_EXACT_DUPLICATES + config.N_CONFLICTING_DUPLICATES
+    sources = rng.choice(rows, size=n_dups, replace=False)
+    for k, source in enumerate(sources):
+        new_row = len(raw)
+        raw.loc[new_row] = raw.loc[source]
+        if k < config.N_EXACT_DUPLICATES:
+            add_log(new_row, "(row)", "duplicate", f"row {source + 1}", "exact copy")
+        else:
+            # Conflicting: same sample_id, one numeric value different.
+            clean = [c for c in config.NUMERIC_COLUMNS if (source, c) not in used]
+            column = clean[rng.integers(len(clean))]
+            original = raw.at[source, column]
+            changed = float(original) * rng.uniform(1.1, 1.3)
+            raw.at[new_row, column] = format_number(changed, column)
+            add_log(new_row, column, "duplicate", original, raw.at[new_row, column])
+
+    # Step 4: messy header names (type 1). Logged as row 0 (the header).
+    for original, messy in config.HEADER_RENAMES.items():
+        add_log(-1, original, "column_names", original, messy)
+    raw = raw.rename(columns=config.HEADER_RENAMES)
+
+    log_df = pd.DataFrame(log, columns=config.LOG_COLUMNS)
+    log_df = log_df.sort_values("row_number", kind="stable").reset_index(drop=True)
+    return raw, log_df
+
+
+def write_datasets(
+    reference_path: Path = config.REFERENCE_CSV_PATH,
+    raw_path: Path = config.RAW_CSV_PATH,
+    log_path: Path = config.CORRUPTION_LOG_PATH,
+) -> None:
+    """Write the reference CSV, then the raw CSV and log made from a copy of it."""
+    save_csv(build_reference_dataset(), reference_path)
+
+    # Read the reference back as text, so untouched raw cells are identical
+    # to the reference file character for character.
+    raw, log = make_raw_dataset(read_csv_as_text(reference_path))
+    save_csv(raw, raw_path)
+    save_csv(log, log_path)
+
+
 def main() -> None:
-    """Generate the reference dataset and save it to data/."""
-    df = build_reference_dataset()
-    save_csv(df, config.REFERENCE_CSV_PATH)
-    print(f"Wrote {len(df)} rows to {config.REFERENCE_CSV_PATH}")
+    """Generate all three data files in data/."""
+    write_datasets()
+    for path in [config.REFERENCE_CSV_PATH, config.RAW_CSV_PATH, config.CORRUPTION_LOG_PATH]:
+        print(f"Wrote {path}")
 
 
 if __name__ == "__main__":

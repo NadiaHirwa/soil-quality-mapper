@@ -109,3 +109,60 @@ COLUMNS = [
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 REFERENCE_CSV_PATH = DATA_DIR / "soil_samples_reference.csv"
+
+# ---------------------------------------------------------------------------
+# Corruption into a messy raw file (Stage 4)
+# ---------------------------------------------------------------------------
+RAW_CSV_PATH = DATA_DIR / "soil_samples_raw.csv"
+CORRUPTION_LOG_PATH = DATA_DIR / "corruption_log.csv"
+
+# Separate seed: changing the corruption never changes the clean data.
+CORRUPTION_SEED = 2026
+# Fraction of the original samples (rows) that get at least one problem.
+CORRUPTION_RATE = 0.12
+
+NUMERIC_COLUMNS = ["pH", "nitrogen", "phosphorus", "salinity"]
+UNITS = {"nitrogen": "mg/kg", "phosphorus": "mg/kg", "salinity": "dS/m"}
+OUTLIER_FACTOR = 3.0         # assumption: outlier = 3 x the true value
+
+# Problem 1: header renames (original name -> messy name).
+HEADER_RENAMES = {"pH": " PH", "nitrogen": "Nitrogen ", "salinity": "SALINITY"}
+
+# Problem 6: duplicate rows appended at the end of the file.
+N_EXACT_DUPLICATES = 2
+N_CONFLICTING_DUPLICATES = 2
+
+# Problems 2, 3, 4, 5, 7, 8: one entry = one corrupted cell.
+# (problem type, kind, columns it may be applied to)
+# For "missing_value" the kind IS the marker written in the cell.
+CORRUPTION_PLAN = [
+    ("missing_value", "", NUMERIC_COLUMNS),       # empty cell
+    ("missing_value", "NA", NUMERIC_COLUMNS),
+    ("missing_value", "n/a", NUMERIC_COLUMNS),
+    ("missing_value", "-", NUMERIC_COLUMNS),
+    ("missing_value", "?", NUMERIC_COLUMNS),
+    ("messy_string", "extra_spaces", NUMERIC_COLUMNS),
+    ("messy_string", "decimal_comma", NUMERIC_COLUMNS),
+    ("messy_string", "unit_in_cell", ["nitrogen", "phosphorus", "salinity"]),
+    ("messy_string", "unit_in_cell", ["nitrogen", "phosphorus", "salinity"]),
+    ("impossible_value", "missing_decimal_point", ["pH"]),   # 6.4 -> 64
+    ("impossible_value", "negative", ["nitrogen"]),
+    ("impossible_value", "negative", ["phosphorus"]),
+    ("impossible_value", "negative", ["salinity"]),
+    ("outlier", "times_factor", ["nitrogen"]),
+    ("outlier", "times_factor", ["phosphorus"]),
+    ("gps_error", "missing_minus", ["latitude"]),
+    ("gps_error", "missing_minus", ["latitude"]),
+    ("gps_error", "swap_lat_lon", ["latitude"]),   # also changes longitude
+    ("inconsistent_format", "date_dd_mm_yyyy", ["sample_date"]),
+    ("inconsistent_format", "date_dd_mm_yyyy", ["sample_date"]),
+    ("inconsistent_format", "date_long", ["sample_date"]),
+    ("inconsistent_format", "name_lowercase", ["collector"]),
+    ("inconsistent_format", "name_extra_spaces", ["collector"]),
+    ("inconsistent_format", "name_initials", ["collector"]),
+]
+
+LOG_COLUMNS = [
+    "sample_id", "row_number", "column", "problem_type",
+    "original_value", "corrupted_value",
+]

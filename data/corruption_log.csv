@@ -1,0 +1,33 @@
+sample_id,row_number,column,problem_type,original_value,corrupted_value
+,0,pH,column_names,pH, PH
+,0,nitrogen,column_names,nitrogen,Nitrogen 
+,0,salinity,column_names,salinity,SALINITY
+S003,3,collector,inconsistent_format,Eric Mugisha,eric mugisha
+S008,8,latitude,gps_error,-1.949902,30.453499
+S008,8,longitude,gps_error,30.453499,-1.949902
+S017,17,nitrogen,missing_value,30.4,-
+S017,17,latitude,gps_error,-1.949364,1.949364
+S017,17,phosphorus,missing_value,15.5,NA
+S017,17,collector,inconsistent_format,Grace Ingabire,G. Ingabire
+S034,34,salinity,impossible_value,1.18,-1.18
+S035,35,phosphorus,messy_string,12.9,12.9 mg/kg
+S035,35,nitrogen,outlier,29.8,89.4
+S036,36,sample_date,inconsistent_format,2026-03-04,04/03/2026
+S036,36,salinity,missing_value,1.6,n/a
+S044,44,phosphorus,outlier,14.0,42.0
+S044,44,nitrogen,messy_string,26.9,  26.9 
+S044,44,sample_date,inconsistent_format,2026-03-03,3 March 2026
+S059,59,sample_date,inconsistent_format,2026-03-06,06/03/2026
+S063,63,nitrogen,messy_string,22.4,"22,4"
+S063,63,phosphorus,messy_string,13.1,13.1 mg/kg
+S063,63,pH,missing_value,5.73,?
+S076,76,phosphorus,impossible_value,14.7,-14.7
+S076,76,collector,inconsistent_format,Eric Mugisha, Eric Mugisha  
+S076,76,nitrogen,missing_value,34.1,
+S080,80,latitude,gps_error,-1.947197,1.947197
+S083,83,pH,impossible_value,5.92,592
+S083,83,nitrogen,impossible_value,29.9,-29.9
+S036,101,(row),duplicate,row 36,exact copy
+S044,102,(row),duplicate,row 44,exact copy
+S080,103,nitrogen,duplicate,37.4,43.5
+S035,104,salinity,duplicate,0.87,1.08
