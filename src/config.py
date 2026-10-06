@@ -166,3 +166,26 @@ LOG_COLUMNS = [
     "sample_id", "row_number", "column", "problem_type",
     "original_value", "corrupted_value",
 ]
+
+# ---------------------------------------------------------------------------
+# Cleaning (Stage 5) - our design decisions
+# ---------------------------------------------------------------------------
+# Cell texts that mean "no value" (compared ignoring upper/lower case).
+MISSING_MARKERS = ["", "NA", "n/a", "-", "?"]
+
+# Accepted date formats, tried in this order. DD/MM/YYYY is read DAY-FIRST
+# (Rwanda convention): "04/03/2026" means 4 March 2026, not 3 April.
+DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%d %B %Y"]
+
+# A coordinate may lie this far outside the field and still count as inside
+# (allows for small GPS error). Rows still outside are dropped.
+GPS_BOX_MARGIN_M = 10.0      # assumption
+
+# Local (spatial) outlier check: compare each value with the median of its
+# nearest neighbours; flag if |value - median| > factor x MAD of all
+# residuals. Both numbers are assumptions; see README for how c was chosen.
+OUTLIER_NEIGHBOURS = 6       # assumption: k nearest neighbours
+OUTLIER_MAD_FACTOR = 15.0    # assumption: c (works for ~9.5 < c < ~22.9)
+
+OUTPUTS_DIR = PROJECT_ROOT / "outputs"   # git-ignored inspection files
+CLEAN_CSV_PREVIEW_PATH = OUTPUTS_DIR / "soil_samples_clean.csv"
