@@ -54,3 +54,18 @@ Libraries: Python, NumPy, Pandas, Matplotlib, Seaborn, Streamlit (lecturer appro
 - Explain each step before or after doing it so the group can defend it in the presentation.
 - Git: NEVER add "Co-Authored-By" lines or any AI attribution to commit messages or PR descriptions. Write short, plain commit messages. Only commit and push when asked.
 - Windows, PowerShell, with a `.venv` in the project folder (inside OneDrive). Run Python as `.venv\Scripts\python` (activation scripts may be blocked).
+
+## Quality bar and teaching mode
+
+### Teaching mode
+- We are beginners. Before writing code for a stage, explain the idea in plain language with a tiny example. After writing it, walk through the code section by section and tell us what to check.
+- Keep each stage small enough that we can explain every line in our defence.
+
+### Quality bar (masters level)
+- All constants (field size, seed, zone centres, baselines, noise levels) live in `src/config.py`, not scattered in code.
+- Every function has a docstring and type hints; prefer small, pure functions.
+- Every stage gets automated tests in `tests/` using pytest (dev-only: put pytest in `requirements-dev.txt`, not `requirements.txt`).
+- Stage 6 includes leave-one-out cross-validation of IDW (RMSE and MAE), compared with a mean-value baseline, and is used to choose the IDW power.
+- Stage 5 produces a data-quality report (problems found, fixed, flagged, dropped), checked against the reference CSV.
+- Every scientific assumption (e.g. fertility thresholds) is cited or explicitly labelled as an assumption in the README.
+- The README will end up as a short methods write-up: data, methods, validation results, limitations.
