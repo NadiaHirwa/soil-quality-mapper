@@ -305,3 +305,57 @@ REPORT_DISCLAIMER = ("Indicative only, based on synthetic data and simplified th
 FERTILITY_COLORS = ["#0072B2", "#F0E442", "#D55E00"]          # Good, Moderate, Poor
 LIMITING_FACTOR_COLORS = ["#DDDDDD", "#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#555555"]
 PARCEL_LINE_COLOR = "#222222"
+
+# ---------------------------------------------------------------------------
+# Report text (Stage 10): written once, used by the app AND the PDF report
+# ---------------------------------------------------------------------------
+REPORT_TITLE = "Soil Quality Mapper: parcel evaluation report"
+FIELD_DESCRIPTION = ("Synthetic 500 m x 400 m field near Rwamagana, Eastern Province, Rwanda "
+                     "(simulated for this project, not a real farm).")
+
+METHOD_STEPS = [
+    "Generate: 100 samples on a jittered 10 x 10 grid; each value = baseline + spatial "
+    "pattern + noise. A messy copy with 8 kinds of data problems is what the app loads.",
+    "Clean: standardise headers, missing markers, numbers, dates and names; repair GPS "
+    "errors; set impossible values to missing; remove duplicates; flag local outliers "
+    "(flagged values are kept, not deleted).",
+    "Interpolate: Inverse Distance Weighting (IDW) onto a 5 m grid, in metres from the "
+    "field's south-west corner.",
+    "Validate: leave-one-out cross-validation; the IDW power with the lowest RMSE is used, "
+    "and compared with predicting the mean of the other samples.",
+    "Classify: Good / Moderate / Poor per property for maize; each grid cell takes the "
+    "worst class of its four properties (law of the minimum).",
+    "Report: 20 parcels of 100 m x 100 m (1 ha) with statistics, class shares, overall "
+    "class, limiting factor and number of real samples.",
+]
+
+KEY_ASSUMPTIONS = [
+    "Nitrogen is plant-available nitrate-N; phosphorus is Mehlich-3 P; salinity is ECe.",
+    "Thresholds are for maize (see README, Fertility rules, for each source and its status).",
+    "Parcel class = worst class covering at least 10% of the parcel.",
+    "Outliers: |value - median of 6 nearest neighbours| > 15 x MAD of all such differences.",
+    "Date DD/MM/YYYY is read day-first (Rwanda convention).",
+]
+
+LIMITATIONS = [
+    "Synthetic data: the results demonstrate the method, not a real field.",
+    "GPS repair is field-specific: a coordinate is only repaired if the repaired point "
+    "falls inside this field.",
+    "IDW never predicts beyond the highest or lowest sample, so it under-predicts peaks, "
+    "and it draws 'bullseyes' around single samples.",
+    "Leave-one-out cross-validation is slightly optimistic: it tests predictions about "
+    "45 m from the nearest sample, not across large gaps.",
+    "Several thresholds are marked 'to verify' (calibrated outside Rwanda, or read only "
+    "in secondary sources).",
+    "Grid cells are classified from estimates; parcels with few samples are less certain.",
+]
+
+# PDF layout
+PDF_PAGE_SIZE = (11.69, 8.27)        # A4 landscape, inches
+PDF_TABLE_ROWS_PER_PAGE = 12
+PDF_TABLE_COLUMNS = {                # report column -> short PDF header
+    "parcel_id": "Parcel", "pH_mean": "pH", "nitrogen_mean": "N (mg/kg)",
+    "phosphorus_mean": "P (mg/kg)", "salinity_mean": "EC (dS/m)", "pct_good": "Good %",
+    "pct_moderate": "Moderate %", "pct_poor": "Poor %", "overall_class": "Class",
+    "main_limiting_factor": "Limiting factor", "n_samples": "Samples",
+}

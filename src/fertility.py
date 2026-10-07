@@ -8,11 +8,15 @@ Overall class of a grid cell = worst of the four properties (Liebig's law
 of the minimum): a cell is only as good as its most limiting property.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from src import config
+from src.cleaning import clean_soil_data
 from src.geo import latlon_to_metres
+from src.interpolation import best_power, cross_validate, interpolate_property, make_grid, property_samples
 
 NO_DATA = -1  # class code for a missing (NaN) value
 
@@ -209,3 +213,86 @@ def parcel_report(
         row["note"] = parcel_note(limiting, row["n_samples"])
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Whole pipeline in one call (Stage 10)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FieldAssessment:
+    """Everything the app and the PDF report need, from one raw table."""
+
+    clean: pd.DataFrame
+    cleaning: dict                       # report from cleaning.clean_soil_data
+    exclude_outliers: bool
+    manual_power: float | None           # None = powers chosen by LOOCV
+    powers: dict[str, float]             # IDW power used per property
+    cv_tables: dict[str, pd.DataFrame]   # LOOCV table per property
+    grid_x: np.ndarray
+    grid_y: np.ndarray
+    grids: dict[str, np.ndarray]         # IDW map per property
+    class_grid: np.ndarray
+    limiting_grid: np.ndarray
+    parcels: pd.DataFrame                # parcel report
+
+
+def assess_field(
+    raw: pd.DataFrame,
+    manual_power: float | None = None,
+    exclude_outliers: bool = config.EXCLUDE_OUTLIERS_FROM_MAPS,
+) -> FieldAssessment:
+    """raw table -> clean -> interpolate -> classify -> parcel report.
+
+    Bundled and uploaded data both go through exactly this path.
+
+    Args:
+        raw: Raw table with cells as text (see cleaning.load_raw_csv).
+        manual_power: IDW power for every property; None = best by LOOCV.
+        exclude_outliers: Leave flagged outliers out of the maps.
+
+    Raises:
+        ValueError: if cleaning fails or leaves no usable rows.
+    """
+    clean, cleaning = clean_soil_data(raw)
+    if clean.empty:
+        raise ValueError("no rows are left after cleaning (check the coordinates).")
+
+    grid_x, grid_y = make_grid()
+    powers, cv_tables, grids = {}, {}, {}
+    for prop in config.NUMERIC_COLUMNS:
+        xy, values = property_samples(clean, prop, exclude_outliers)
+        cv_tables[prop] = cross_validate(xy, values)
+        powers[prop] = manual_power if manual_power is not None else best_power(cv_tables[prop])
+        grids[prop] = interpolate_property(clean, prop, powers[prop], exclude_outliers)
+
+    class_grid, limiting_grid = classify_fertility(grids)
+    parcels = parcel_report(grids, class_grid, clean, grid_x, grid_y)
+    return FieldAssessment(clean, cleaning, exclude_outliers, manual_power, powers, cv_tables,
+                           grid_x, grid_y, grids, class_grid, limiting_grid, parcels)
+
+
+def field_summary(assessment: FieldAssessment) -> dict:
+    """Key numbers for the Overview tab and the PDF title page.
+
+    main_limiting_factor counts, for each property, the grid cells where it is
+    at the cell's (non-Good) worst class; the property with most cells wins.
+    """
+    class_grid = assessment.class_grid
+    counts = limiting_mask(property_classes(assessment.grids)).sum(axis=(1, 2))
+    if counts.max() == 0:
+        main_factor = "none"
+    else:
+        main_factor = ", ".join(p for p, c in zip(config.NUMERIC_COLUMNS, counts) if c == counts.max())
+    parcel_classes = assessment.parcels["overall_class"]
+    return {
+        "rows_in": assessment.cleaning["rows_in"],
+        "samples_used": len(assessment.clean),
+        "pct_area": {name: 100 * float((class_grid == code).mean())
+                     for code, name in enumerate(config.FERTILITY_CLASSES)},
+        "parcels_by_class": {name: int((parcel_classes == name).sum())
+                             for name in config.FERTILITY_CLASSES},
+        "n_parcels": len(assessment.parcels),
+        "main_limiting_factor": main_factor,
+    }

@@ -6,7 +6,8 @@ from streamlit.testing.v1 import AppTest
 
 from src import config
 
-TAB_LABELS = ["Data & cleaning", "Maps", "Validation", "Fertility & parcels", "Export"]
+TAB_LABELS = ["Overview", "Data & cleaning", "Maps", "Validation", "Fertility & parcels", "Export",
+              "About & method"]
 
 
 @pytest.fixture
@@ -20,7 +21,7 @@ def test_runs_with_bundled_data_without_exceptions(app):
     assert not app.error
 
 
-def test_all_five_tabs_exist(app):
+def test_all_tabs_exist(app):
     assert [tab.label for tab in app.tabs] == TAB_LABELS
 
 
@@ -73,8 +74,21 @@ def test_fertility_and_export_tabs_render(app):
     # Exactly one table on the page is the parcel report, with 20 parcels.
     parcel_tables = [df for df in app.dataframe if "overall_class" in df.value.columns]
     assert len(parcel_tables) == 1 and len(parcel_tables[0].value) == 20
-    # Export tab: one download button for the CSV, one for the PNG.
-    assert len(app.get("download_button")) == 2
+    # Export tab: PDF, parcel CSV, fertility PNG, cleaned data CSV, cleaning report CSV.
+    labels = [button.proto.label for button in app.get("download_button")]
+    assert len(labels) == 5
+    assert "Parcel evaluation report (PDF)" in labels
     for power_mode in ["Manual", "Auto (cross-validation)"]:
         app.sidebar.radio[1].set_value(power_mode).run()
         assert not app.exception
+
+
+def test_every_tab_has_content_and_no_figures_stay_open():
+    plt.close("all")
+    app = AppTest.from_file("../app.py", default_timeout=120).run()
+    assert not app.exception and not app.error
+    assert [tab.label for tab in app.tabs] == TAB_LABELS
+    for tab in app.tabs:
+        assert len(tab.children) > 0, tab.label
+    assert len(app.metric) >= 6  # Overview key numbers (+ cleaning summary)
+    assert plt.get_fignums() == []
