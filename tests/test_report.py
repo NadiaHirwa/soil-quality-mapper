@@ -11,7 +11,7 @@ import pytest
 from src import config
 from src.cleaning import load_raw_csv
 from src.fertility import assess_field, field_summary
-from src.plots import build_pdf_report, pdf_page_count
+from src.report import build_pdf_report, pdf_page_count
 
 
 @pytest.fixture(scope="module")

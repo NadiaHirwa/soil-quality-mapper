@@ -22,7 +22,6 @@ from src.cleaning import load_raw_csv
 from src.fertility import FieldAssessment, assess_field, field_summary
 from src.interpolation import loocv_predictions, property_samples
 from src.plots import (
-    build_pdf_report,
     plot_all_property_maps,
     plot_correlation_heatmap,
     plot_distributions,
@@ -32,6 +31,7 @@ from src.plots import (
     plot_property_map,
     plot_rmse_vs_power,
 )
+from src.report import build_pdf_report
 
 PROPERTY_LABELS = config.PROPERTY_LABELS  # e.g. "nitrogen" -> "Nitrogen (mg/kg)"
 SOURCE_BUNDLED = "Bundled sample data"
