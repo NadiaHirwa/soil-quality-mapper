@@ -110,3 +110,22 @@ Source status used below:
 
 - Okabe-Ito colour-blind-safe palette (M. Okabe and K. Ito, "Color Universal
   Design"): citation details **to verify**.
+
+## Scenario design changes
+
+The dataset is a designed test scenario, not a measurement. Changes to scenario
+parameters are listed here so the history is transparent.
+
+| Date | Parameter (`src/config.py`) | Old | New | Why |
+|---|---|---|---|---|
+| 2026-10-07 | `PH_PATCH_STRENGTH` | -1.2 (centre pH ~5.3) | -1.75 (centre pH ~4.75) | With the old value no part of the field reached the "Poor" pH class (< 5.1), so the Poor class, Poor areas and their report notes were never exercised. The stronger patch adds a strongly acidic zone. |
+
+Effects after regenerating all data (reported, not tuned):
+
+- Outlier check: safe range for c is still 9.48 < c < 22.93 (salinity sets the lower
+  limit); c = 15 is unchanged. Zero clean reference values flagged.
+- LOOCV: pH RMSE rose (best 0.213 at p = 3, baseline 0.371) because the patch is
+  steeper; other properties unchanged.
+- Fertility: 0.7% of the field is now Poor (inside P01 and P06). No parcel is Poor,
+  because the Poor share in P06 (9.5%) is just under the 10% parcel rule. We did not
+  tune the scenario further to force a Poor parcel.

@@ -20,12 +20,12 @@ S044,44,sample_date,inconsistent_format,2026-03-03,3 March 2026
 S059,59,sample_date,inconsistent_format,2026-03-06,06/03/2026
 S063,63,nitrogen,messy_string,22.4,"22,4"
 S063,63,phosphorus,messy_string,13.1,13.1 mg/kg
-S063,63,pH,missing_value,5.73,?
+S063,63,pH,missing_value,5.39,?
 S076,76,phosphorus,impossible_value,14.7,-14.7
 S076,76,collector,inconsistent_format,Eric Mugisha, Eric Mugisha  
 S076,76,nitrogen,missing_value,34.1,
 S080,80,latitude,gps_error,-1.947197,1.947197
-S083,83,pH,impossible_value,5.92,592
+S083,83,pH,impossible_value,5.57,557
 S083,83,nitrogen,impossible_value,29.9,-29.9
 S036,101,(row),duplicate,row 36,exact copy
 S044,102,(row),duplicate,row 44,exact copy

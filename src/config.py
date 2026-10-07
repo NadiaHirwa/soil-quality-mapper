@@ -30,7 +30,7 @@ RANDOM_SEED = 42
 PH_BASELINE = 6.5            # assumption: slightly acidic field average
 PH_NOISE_SD = 0.15           # assumption: small sample-to-sample variation
 PH_PATCH_CENTRE_M = (100.0, 300.0)  # assumption: acidic patch, north-west
-PH_PATCH_STRENGTH = -1.2     # assumption: pH ~5.3 at the patch centre
+PH_PATCH_STRENGTH = -1.75    # assumption: pH ~4.75 at the centre (strongly acidic zone; was -1.2, see README)
 PH_PATCH_SIGMA_M = 60.0      # assumption: patch radius scale
 
 # --- Nitrogen (mg/kg, plant-available) ---
