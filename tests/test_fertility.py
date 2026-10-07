@@ -126,7 +126,7 @@ def test_report_columns(setup):
     expected = (["parcel_id", "x_min_m", "x_max_m", "y_min_m", "y_max_m", "area_ha"]
                 + [f"{p}_{s}" for p in config.NUMERIC_COLUMNS for s in ("mean", "min", "max")]
                 + ["pct_good", "pct_moderate", "pct_poor", "overall_class",
-                   "main_limiting_factor", "n_samples", "note"])
+                   "main_limiting_factor", "poor_area_warning", "n_samples", "note"])
     assert list(report.columns) == expected
     assert len(report) == 20
 
@@ -169,3 +169,20 @@ def test_fertility_and_limiting_maps_draw_parcels(setup):
         assert {f"P{i:02d}" for i in range(1, 21)} <= labels
         assert ax.get_legend() is not None
         plt.close(fig)
+
+
+def test_small_poor_area_is_warned_even_when_class_is_moderate(setup):
+    # P06 has a Poor (acidic) patch smaller than the 10% rule.
+    report = setup[-1].set_index("parcel_id")
+    p06 = report.loc["P06"]
+    assert 0 < p06["pct_poor"] < 100 * config.PARCEL_MIN_CLASS_SHARE
+    assert p06["overall_class"] == "Moderate"  # the 10% rule alone hides it ...
+    assert p06["poor_area_warning"] == f"Contains Poor area: {p06['pct_poor']:.1f}% (pH limiting)"
+    assert p06["note"].startswith(p06["poor_area_warning"])  # ... the warning shows it
+
+
+def test_no_warning_without_poor_area(setup):
+    report = setup[-1]
+    no_poor = report[report["pct_poor"] == 0]
+    assert (no_poor["poor_area_warning"] == "").all()
+    assert (report["poor_area_warning"] != "").sum() == (report["pct_poor"] > 0).sum()

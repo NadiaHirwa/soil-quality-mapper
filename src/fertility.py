@@ -151,12 +151,26 @@ def main_limiting_factor(mask_in_parcel: np.ndarray, worst_cells: np.ndarray) ->
     return [p for p, c in zip(config.NUMERIC_COLUMNS, counts) if c == counts.max()]
 
 
-def parcel_note(limiting: list[str], n_samples: int) -> str:
+def poor_area_warning(poor_share: float, poor_limiting: list[str]) -> str:
+    """Warning text when a parcel contains ANY Poor area, else "".
+
+    The overall class follows the 10% rule, so a Poor patch smaller than 10%
+    of the parcel does not change the class. This warning keeps it visible.
+    """
+    if poor_share <= 0:
+        return ""
+    factors = ", ".join(poor_limiting) if poor_limiting else "unknown"
+    return f"Contains Poor area: {100 * poor_share:.1f}% ({factors} limiting)"
+
+
+def parcel_note(limiting: list[str], n_samples: int, warning: str = "") -> str:
     """Short generic note for one parcel (never a recommendation)."""
     if limiting:
         note = " ".join(config.FERTILITY_NOTES[p] for p in limiting)
     else:
         note = "No limiting factor at these thresholds."
+    if warning:
+        note = f"{warning}. {note}"
     if n_samples < config.PARCEL_FEW_SAMPLES:
         note += f" Only {n_samples} sample(s) inside: estimate less certain."
     return f"{note} {config.REPORT_DISCLAIMER}"
@@ -180,7 +194,7 @@ def parcel_report(
     Returns:
         DataFrame: parcel_id, bounds, area_ha, <prop>_mean/min/max,
         pct_good, pct_moderate, pct_poor, overall_class, main_limiting_factor,
-        n_samples, note.
+        poor_area_warning, n_samples, note.
     """
     cell_parcel = parcel_index(grid_x, grid_y)
     mask = limiting_mask(property_classes(grids))
@@ -209,8 +223,10 @@ def parcel_report(
         limiting = main_limiting_factor(mask[:, inside], classes == overall) if overall else []
         row["overall_class"] = config.FERTILITY_CLASSES[overall]
         row["main_limiting_factor"] = ", ".join(limiting) if limiting else "none"
+        poor_limiting = main_limiting_factor(mask[:, inside], classes == 2)
+        row["poor_area_warning"] = poor_area_warning(shares[2], poor_limiting)
         row["n_samples"] = int(samples_per_parcel[index])
-        row["note"] = parcel_note(limiting, row["n_samples"])
+        row["note"] = parcel_note(limiting, row["n_samples"], row["poor_area_warning"])
         rows.append(row)
     return pd.DataFrame(rows)
 

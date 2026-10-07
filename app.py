@@ -333,6 +333,10 @@ with tab_fertility:
         figure(limiting_map_png(raw, manual_power, exclude_outliers), HOW_TO_READ["limiting_map"])
 
     st.subheader("Parcel evaluation (100 m x 100 m, 1 ha each)")
+    flagged = parcels[parcels["poor_area_warning"] != ""]
+    if len(flagged):
+        st.warning("Poor areas inside parcels (too small to change the parcel class):\n\n"
+                   + "\n".join(f"- {p.parcel_id}: {p.poor_area_warning}" for p in flagged.itertuples()))
     st.dataframe(parcels, hide_index=True)
     st.caption(
         f"Parcel class = worst class covering at least {config.PARCEL_MIN_CLASS_SHARE:.0%} of the "

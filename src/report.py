@@ -75,9 +75,11 @@ def _parcel_table_pages(parcels: pd.DataFrame) -> list[Figure]:
     """The key parcel columns as a table, split over pages of PDF_TABLE_ROWS_PER_PAGE rows."""
     table = parcels[list(config.PDF_TABLE_COLUMNS)].rename(columns=config.PDF_TABLE_COLUMNS)
     rows = config.PDF_TABLE_ROWS_PER_PAGE
-    chunks = [table.iloc[start:start + rows] for start in range(0, len(table), rows)]
+    starts = range(0, len(table), rows)
+    chunks = [table.iloc[start:start + rows] for start in starts]
+    warnings = [parcels.iloc[start:start + rows] for start in starts]
     pages = []
-    for number, chunk in enumerate(chunks, start=1):
+    for number, (chunk, chunk_parcels) in enumerate(zip(chunks, warnings), start=1):
         fig, ax = plt.subplots(figsize=config.PDF_PAGE_SIZE)
         ax.axis("off")
         ax.set_title(f"Parcel evaluation (page {number} of {len(chunks)})",
@@ -101,6 +103,15 @@ def _parcel_table_pages(parcels: pd.DataFrame) -> list[Figure]:
         footer = ("Means are of the interpolated 5 m grid inside each parcel. The full report "
                   "(min/max, bounds, notes) is in parcel_report.csv. " + config.REPORT_DISCLAIMER)
         fig.text(0.06, 0.05, textwrap.fill(footer, width=150), fontsize=9, style="italic")
+
+        # Poor areas smaller than the 10% rule do not change the class: list them.
+        flagged = chunk_parcels[chunk_parcels["poor_area_warning"] != ""]
+        if len(flagged):
+            lines = [f"{p.parcel_id}: {p.poor_area_warning}" for p in flagged.itertuples()]
+            fig.text(0.13, 0.32, "Poor area warnings", fontsize=11, fontweight="bold",
+                     va="top", color=config.INK_COLOR)
+            fig.text(0.13, 0.285, "\n".join(lines), fontsize=10, va="top",
+                     color=config.INK_COLOR, linespacing=1.6)
         pages.append(fig)
     return pages
 
