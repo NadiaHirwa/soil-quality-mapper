@@ -205,3 +205,42 @@ IDW_EXACT_TOLERANCE_M = 1e-6
 # Design decision: values flagged as outliers are left OUT of interpolation
 # by default (they are suspicious); the app may switch this off.
 EXCLUDE_OUTLIERS_FROM_MAPS = True
+
+# ---------------------------------------------------------------------------
+# Plots (Stage 8)
+# ---------------------------------------------------------------------------
+# Labels with units, used on colour bars, axes and in the app.
+PROPERTY_LABELS = {
+    "pH": "pH (unitless)",
+    "nitrogen": "Nitrogen (mg/kg)",
+    "phosphorus": "Phosphorus (mg/kg)",
+    "salinity": "Salinity, EC (dS/m)",
+}
+
+SEABORN_STYLE = "whitegrid"          # one theme for every plot
+SEABORN_CONTEXT = "notebook"
+
+MAP_COLORMAP = "viridis"             # perceptually uniform sequential
+CORRELATION_COLORMAP = "vlag"        # diverging: blue - white - red
+
+FIGSIZE_MAP = (8.0, 6.2)
+FIGSIZE_MAP_GRID = (14.0, 12.5)
+FIGSIZE_SMALL = (6.0, 4.5)
+FIGSIZE_DISTRIBUTIONS = (11.0, 7.5)
+
+SAMPLE_MARKER_SIZE = 16              # used samples (small dots)
+EXCLUDED_MARKER_SIZE = 46            # missing / outlier markers (larger)
+SAMPLE_COLOR = "white"
+SAMPLE_EDGE_COLOR = "#222222"
+MISSING_COLOR = "#e45756"            # red x: no value for this property
+OUTLIER_COLOR = "#ff9f1c"            # orange triangle: flagged and excluded
+
+INK_COLOR = "#222222"                # text, scale bar, north arrow
+POINT_COLOR = "#3a6ea5"              # scatter points / curve in seaborn plots
+REFERENCE_LINE_COLOR = "#888888"     # 1:1 line and mean baseline
+HIGHLIGHT_COLOR = "#e45756"          # chosen IDW power
+
+SCALE_BAR_M = 100.0                  # length of the map scale bar
+
+# Resolution of plot images shown in the app.
+APP_FIGURE_DPI = 130
