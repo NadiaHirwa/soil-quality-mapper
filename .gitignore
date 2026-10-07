@@ -7,3 +7,4 @@ venv/
 .pytest_cache/
 *.png
 outputs/
+.ipynb_checkpoints/
