@@ -18,6 +18,7 @@ Run as a script to write a clean CSV for inspection into outputs/:
     .venv\\Scripts\\python -m src.cleaning
 """
 
+import io
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -31,9 +32,60 @@ from src.geo import latlon_to_metres, metres_to_latlon, pairwise_distances
 COORDINATE_COLUMNS = ["latitude", "longitude"]
 
 
+class SoilDataError(ValueError):
+    """A problem with the INPUT DATA that the user can fix (bad file, wrong field...).
+
+    The app catches only this error and shows its message. Any other exception
+    is a programming error: it is not hidden, and the tests should catch it.
+    """
+
+
+def describe_field() -> str:
+    """Where this app's field is, for messages: size, SW corner and place name."""
+    return (f"a {config.FIELD_WIDTH_M:g} m x {config.FIELD_HEIGHT_M:g} m field with its south-west "
+            f"corner at {config.ORIGIN_LAT:.4f}°, {config.ORIGIN_LON:.4f}° "
+            f"({config.FIELD_LOCATION_NAME})")
+
+
+def read_raw_bytes(data: bytes) -> pd.DataFrame:
+    """Read an uploaded or bundled CSV into a table of text cells.
+
+    Handles what Excel often produces: a UTF-8 "byte order mark" (BOM) at the
+    start, and semicolons instead of commas between columns (common where a
+    comma is the decimal separator; decimal commas are fixed later).
+
+    Raises:
+        SoilDataError: file too large, not UTF-8 text, empty, unreadable, or
+            more rows than MAX_ROWS.
+    """
+    size_mb = len(data) / 1_000_000
+    if size_mb > config.MAX_UPLOAD_MB:
+        raise SoilDataError(f"The file is {size_mb:.1f} MB; the limit is {config.MAX_UPLOAD_MB:g} MB "
+                            f"(the app is designed for one field of about 100 samples).")
+    try:
+        text = data.decode("utf-8-sig")  # "-sig" removes a BOM if there is one
+    except UnicodeDecodeError:
+        raise SoilDataError("The file is not a UTF-8 text CSV. In Excel, use "
+                            "'Save As' > 'CSV UTF-8 (Comma delimited)'.") from None
+    if not text.strip():
+        raise SoilDataError("The file is empty.")
+
+    header = text.splitlines()[0]
+    separator = ";" if header.count(";") > header.count(",") else ","
+    try:
+        table = pd.read_csv(io.StringIO(text), sep=separator, dtype=str, keep_default_na=False)
+    except pd.errors.ParserError as error:
+        raise SoilDataError(f"The file could not be read as a table: {error}") from None
+    if len(table) > config.MAX_ROWS:
+        raise SoilDataError(f"The file has {len(table)} rows; the limit is {config.MAX_ROWS}.")
+    if table.empty:
+        raise SoilDataError("The file has a header but no data rows.")
+    return table
+
+
 def load_raw_csv(path: Path = config.RAW_CSV_PATH) -> pd.DataFrame:
-    """Read the raw CSV with every cell as text, exactly as in the file."""
-    return pd.read_csv(path, dtype=str, keep_default_na=False)
+    """Read a CSV file with every cell as text, exactly as in the file."""
+    return read_raw_bytes(Path(path).read_bytes())
 
 
 def step_result(step: str, fixed: int = 0, set_to_nan: int = 0, flagged: int = 0,
@@ -48,11 +100,19 @@ def step_result(step: str, fixed: int = 0, set_to_nan: int = 0, flagged: int = 0
 # ---------------------------------------------------------------------------
 
 
-def standardise_headers(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+def standardise_headers(df: pd.DataFrame) -> tuple[pd.DataFrame, dict, list[str], list[str]]:
     """Strip spaces, ignore case, and map headers back to the 9 standard names.
 
+    Unknown extra columns are ignored. A missing optional column (anything
+    except config.REQUIRED_COLUMNS) is added empty, so its values count as
+    missing.
+
+    Returns:
+        (table with the 9 standard columns, report row, ignored columns,
+        optional columns that were added empty).
+
     Raises:
-        ValueError: if a required column cannot be found.
+        SoilDataError: if a required column cannot be found.
     """
     standard = {name.lower(): name for name in config.COLUMNS}
     new_names = [standard.get(str(c).strip().lower(), c) for c in df.columns]
@@ -60,10 +120,22 @@ def standardise_headers(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     out = df.copy()
     out.columns = new_names
-    missing = [c for c in config.COLUMNS if c not in out.columns]
-    if missing:
-        raise ValueError(f"Missing required columns: {missing}")
-    return out[config.COLUMNS], step_result("1 headers", fixed=fixed)
+    missing_required = [c for c in config.REQUIRED_COLUMNS if c not in out.columns]
+    if missing_required:
+        raise SoilDataError(
+            f"The file is missing required column(s): {', '.join(missing_required)}. "
+            f"Expected columns: {', '.join(config.COLUMNS)}. "
+            f"Found: {', '.join(map(str, df.columns))}.")
+
+    ignored = [str(c) for c in out.columns if c not in config.COLUMNS]
+    added = [c for c in config.COLUMNS if c not in out.columns]
+    for column in added:
+        out[column] = np.nan
+    details = "; ".join(filter(None, [
+        f"ignored unknown column(s): {', '.join(ignored)}" if ignored else "",
+        f"missing column(s) added empty: {', '.join(added)}" if added else "",
+    ]))
+    return out[config.COLUMNS], step_result("1 headers", fixed=fixed, details=details), ignored, added
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +149,9 @@ def normalise_missing(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     out = df.copy()
     trimmed = 0
     for column in out.columns:
-        text = out[column].map(lambda v: v if pd.isna(v) else str(v))
+        # astype(object): an all-empty column (e.g. one added by step 1) would
+        # otherwise be a float column, and .str would fail on it.
+        text = out[column].map(lambda v: v if pd.isna(v) else str(v)).astype(object)
         stripped = text.str.strip()
         trimmed += int((stripped != text).sum())
         is_missing = stripped.isna() | stripped.str.lower().isin(markers)
@@ -329,17 +403,27 @@ def local_outlier_scores(
 
 
 def flag_outliers(df: pd.DataFrame, factor: float = config.OUTLIER_MAD_FACTOR) -> tuple[pd.DataFrame, dict]:
-    """Add a boolean <property>_outlier column per soil property. Nothing is deleted."""
+    """Add a boolean <property>_outlier column per soil property. Nothing is deleted.
+
+    A property with fewer than MIN_SAMPLES_FOR_OUTLIER_CHECK values is not
+    checked (a sample needs 6 neighbours to be compared with), and gets no flags.
+    """
     out = df.copy()
     x, y = latlon_to_metres(out["latitude"].to_numpy(), out["longitude"].to_numpy())
-    counts = {}
+    details = []
+    total = 0
     for column in config.NUMERIC_COLUMNS:
+        n_values = int(out[column].notna().sum())
+        if n_values < config.MIN_SAMPLES_FOR_OUTLIER_CHECK:
+            out[f"{column}_outlier"] = False
+            details.append(f"{column}: not checked (only {n_values} values)")
+            continue
         scores = local_outlier_scores(x, y, out[column].to_numpy())
         flags = np.nan_to_num(scores, nan=0.0) > factor
         out[f"{column}_outlier"] = flags
-        counts[column] = int(flags.sum())
-    details = ", ".join(f"{c}: {n}" for c, n in counts.items())
-    return out, step_result("8 outlier flags", flagged=sum(counts.values()), details=details)
+        total += int(flags.sum())
+        details.append(f"{column}: {int(flags.sum())}")
+    return out, step_result("8 outlier flags", flagged=total, details=", ".join(details))
 
 
 # ---------------------------------------------------------------------------
@@ -356,10 +440,11 @@ def clean_soil_data(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     Returns:
         (clean, report). clean has the 9 standard columns plus one boolean
         <property>_outlier column per soil property. report is a dict with
-        rows_in, rows_out, steps (DataFrame, one row per step) and
-        conflicts (DataFrame of conflicting duplicate values).
+        rows_in, rows_out, steps (DataFrame, one row per step), conflicts
+        (DataFrame of conflicting duplicate values), ignored_columns,
+        added_columns, rows_outside_field and duplicates_removed.
     """
-    df, r1 = standardise_headers(raw)
+    df, r1, ignored_columns, added_columns = standardise_headers(raw)
     df, r2 = normalise_missing(df)
     df, r3 = parse_numbers(df)
     df, r4 = fix_gps(df)
@@ -373,6 +458,10 @@ def clean_soil_data(raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "rows_out": len(df),
         "steps": pd.DataFrame([r1, r2, r3, r4, r5, r6, r7, r8]),
         "conflicts": conflicts,
+        "ignored_columns": ignored_columns,
+        "added_columns": added_columns,
+        "rows_outside_field": r4["rows_dropped"],
+        "duplicates_removed": r7["rows_dropped"],
     }
     return df, report
 

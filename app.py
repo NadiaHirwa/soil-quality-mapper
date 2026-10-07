@@ -18,7 +18,7 @@ import streamlit as st
 from matplotlib.figure import Figure
 
 from src import config
-from src.cleaning import load_raw_csv
+from src.cleaning import SoilDataError, describe_field, load_raw_csv, read_raw_bytes
 from src.fertility import FieldAssessment, assess_field, field_summary
 from src.interpolation import loocv_predictions, property_samples
 from src.plots import (
@@ -76,7 +76,7 @@ def load_bundled_data() -> pd.DataFrame:
 @st.cache_data
 def read_uploaded_csv(file_bytes: bytes) -> pd.DataFrame:
     """An uploaded CSV, read exactly like the bundled one (cells as text)."""
-    return pd.read_csv(io.BytesIO(file_bytes), dtype=str, keep_default_na=False)
+    return read_raw_bytes(file_bytes)
 
 
 @st.cache_data
@@ -188,7 +188,8 @@ uploaded = None
 if source == SOURCE_UPLOAD:
     uploaded = st.sidebar.file_uploader(
         "CSV with the 9 standard columns", type="csv",
-        help="Same columns as data/soil_samples_raw.csv. It goes through the same cleaning, "
+        help=f"Same columns as data/soil_samples_raw.csv; comma or semicolon separated; at most "
+             f"{config.MAX_UPLOAD_MB:g} MB and {config.MAX_ROWS} rows. It goes through the same cleaning, "
              "interpolation and fertility assessment.",
     )
 
@@ -214,6 +215,7 @@ exclude_outliers = st.sidebar.checkbox(
     "Exclude flagged outliers from maps", value=config.EXCLUDE_OUTLIERS_FROM_MAPS,
     help="Flagged values stay in the data but are left out of interpolation.",
 )
+st.sidebar.caption(f"Configured field: {describe_field()}. Uploaded samples must lie in this field.")
 st.sidebar.caption(config.REPORT_DISCLAIMER)
 
 # ---------------------------------------------------------------------------
@@ -232,15 +234,32 @@ else:
 try:
     raw = load_bundled_data() if uploaded is None else read_uploaded_csv(uploaded.getvalue())
     assessment = run_assessment(raw, manual_power, exclude_outliers)
-except Exception as error:  # any bad upload: explain it instead of crashing the app
-    st.error(f"Could not read or process this file: {error}")
+except SoilDataError as error:
+    # Expected problems with the INPUT (bad file, wrong field, too few samples):
+    # explain them. Any other exception is a programming error and is not hidden.
+    st.error(f"This file cannot be used: {error}")
     st.stop()
 
 clean = assessment.clean
 cleaning = assessment.cleaning
 parcels = assessment.parcels
 summary = field_summary(assessment)
-power = assessment.powers[prop]
+power = assessment.powers[prop]  # None if this property is not available
+prop_available = assessment.available(prop)
+not_available_text = (f"{PROPERTY_LABELS[prop]} is not available: only {assessment.n_values[prop]} "
+                      f"sample(s) have a value, and at least {config.MIN_SAMPLES_FOR_MAP} are needed.")
+
+# Tell the user about anything the cleaning had to work around.
+if cleaning["ignored_columns"]:
+    st.info(f"Ignored unknown column(s): {', '.join(cleaning['ignored_columns'])}.")
+if cleaning["added_columns"]:
+    st.warning(f"Missing column(s), treated as empty: {', '.join(cleaning['added_columns'])}.")
+if cleaning["rows_outside_field"]:
+    st.warning(f"{cleaning['rows_outside_field']} row(s) lie outside the configured field "
+               f"({describe_field()}) and were dropped.")
+if assessment.unavailable:
+    st.warning("Not available (too few values): " + ", ".join(assessment.unavailable)
+               + ". Fertility classes use the other properties only.")
 power_note = "set manually" if manual_power is not None else "lowest cross-validation RMSE"
 
 # ---------------------------------------------------------------------------
@@ -301,25 +320,31 @@ with tab_data:
 
 with tab_maps:
     st.subheader(f"Interpolated map: {PROPERTY_LABELS[prop]}")
-    st.write(f"IDW power p = **{power:g}** ({power_note}). Axes are metres from the field's "
-             "south-west corner; north is up. The map is most reliable close to the samples.")
-    figure(property_map_png(raw, manual_power, exclude_outliers, prop), HOW_TO_READ["property_map"],
-           width=820)
+    if not prop_available:
+        st.info(not_available_text)
+    else:
+        st.write(f"IDW power p = **{power:g}** ({power_note}). Axes are metres from the field's "
+                 "south-west corner; north is up. The map is most reliable close to the samples.")
+        figure(property_map_png(raw, manual_power, exclude_outliers, prop),
+               HOW_TO_READ["property_map"], width=820)
     with st.expander("All four properties"):
         figure(all_maps_png(raw, manual_power, exclude_outliers), HOW_TO_READ["all_maps"])
 
 with tab_validation:
     st.subheader(f"Leave-one-out cross-validation: {PROPERTY_LABELS[prop]}")
-    st.write(f"IDW power used for the map: **p = {power:g}** ({power_note}).")
-    col_curve, col_scatter = st.columns(2)
-    with col_curve:
-        figure(rmse_curve_png(assessment.cv_tables[prop], prop, power), HOW_TO_READ["rmse_curve"])
-    with col_scatter:
-        figure(observed_predicted_png(clean, prop, power, exclude_outliers),
-               HOW_TO_READ["observed_predicted"])
-    st.dataframe(assessment.cv_tables[prop].round(4), hide_index=True)
-    st.caption("RMSE and MAE are in the property's units. rmse_vs_baseline below 1 means IDW "
-               "predicts better than the mean of the other samples.")
+    if not prop_available:
+        st.info(not_available_text)
+    else:
+        st.write(f"IDW power used for the map: **p = {power:g}** ({power_note}).")
+        col_curve, col_scatter = st.columns(2)
+        with col_curve:
+            figure(rmse_curve_png(assessment.cv_tables[prop], prop, power), HOW_TO_READ["rmse_curve"])
+        with col_scatter:
+            figure(observed_predicted_png(clean, prop, power, exclude_outliers),
+                   HOW_TO_READ["observed_predicted"])
+        st.dataframe(assessment.cv_tables[prop].round(4), hide_index=True)
+        st.caption("RMSE and MAE are in the property's units. rmse_vs_baseline below 1 means IDW "
+                   "predicts better than the mean of the other samples.")
 
 with tab_fertility:
     st.warning(config.REPORT_DISCLAIMER)

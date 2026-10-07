@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from src import config
-from src.cleaning import clean_soil_data
+from src.cleaning import SoilDataError, clean_soil_data, describe_field
 from src.geo import latlon_to_metres
 from src.interpolation import best_power, cross_validate, interpolate_property, make_grid, property_samples
 
@@ -198,6 +198,7 @@ def parcel_report(
     """
     cell_parcel = parcel_index(grid_x, grid_y)
     mask = limiting_mask(property_classes(grids))
+    not_assessed = [p for p in config.NUMERIC_COLUMNS if np.isnan(grids[p]).all()]
 
     sx, sy = latlon_to_metres(samples["latitude"].to_numpy(), samples["longitude"].to_numpy())
     n_parcels = len(parcel_bounds())
@@ -227,6 +228,8 @@ def parcel_report(
         row["poor_area_warning"] = poor_area_warning(shares[2], poor_limiting)
         row["n_samples"] = int(samples_per_parcel[index])
         row["note"] = parcel_note(limiting, row["n_samples"], row["poor_area_warning"])
+        if not_assessed:
+            row["note"] = f"Not assessed (too few values): {', '.join(not_assessed)}. " + row["note"]
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -238,20 +241,59 @@ def parcel_report(
 
 @dataclass
 class FieldAssessment:
-    """Everything the app and the PDF report need, from one raw table."""
+    """Everything the app and the PDF report need, from one raw table.
+
+    A property with fewer than MIN_SAMPLES_FOR_MAP values is "not available":
+    its power and LOOCV table are None and its grid is all NaN, so the
+    fertility classes use only the other properties.
+    """
 
     clean: pd.DataFrame
-    cleaning: dict                       # report from cleaning.clean_soil_data
+    cleaning: dict                              # report from cleaning.clean_soil_data
     exclude_outliers: bool
-    manual_power: float | None           # None = powers chosen by LOOCV
-    powers: dict[str, float]             # IDW power used per property
-    cv_tables: dict[str, pd.DataFrame]   # LOOCV table per property
+    manual_power: float | None                  # None = powers chosen by LOOCV
+    powers: dict[str, float | None]             # IDW power used per property
+    cv_tables: dict[str, pd.DataFrame | None]   # LOOCV table per property
     grid_x: np.ndarray
     grid_y: np.ndarray
-    grids: dict[str, np.ndarray]         # IDW map per property
+    grids: dict[str, np.ndarray]                # IDW map per property
     class_grid: np.ndarray
     limiting_grid: np.ndarray
-    parcels: pd.DataFrame                # parcel report
+    parcels: pd.DataFrame                       # parcel report
+    n_values: dict[str, int]                    # values used per property
+
+    def available(self, prop: str) -> bool:
+        """True if the property had enough values to be mapped."""
+        return self.powers[prop] is not None
+
+    @property
+    def unavailable(self) -> list[str]:
+        return [p for p in config.NUMERIC_COLUMNS if not self.available(p)]
+
+
+def check_usable(clean: pd.DataFrame, cleaning: dict) -> None:
+    """Stop with a clear message if the cleaned data cannot be mapped at all.
+
+    Raises:
+        SoilDataError: no sample inside the field, too few samples, or too few
+            distinct locations.
+    """
+    if clean.empty:
+        raise SoilDataError(
+            "No sample lies inside the configured field. This app is configured for one "
+            f"specific field: {describe_field()}. To use it for another field, change "
+            "ORIGIN_LAT, ORIGIN_LON and the field size in src/config.py.")
+    if len(clean) < config.MIN_SAMPLES_FOR_MAP:
+        raise SoilDataError(
+            f"Only {len(clean)} usable sample(s) after cleaning ({cleaning['duplicates_removed']} "
+            f"duplicate row(s) removed, {cleaning['rows_outside_field']} outside the field); "
+            f"at least {config.MIN_SAMPLES_FOR_MAP} are needed to draw a map.")
+    n_locations = len(clean[["latitude", "longitude"]].drop_duplicates())
+    if n_locations < config.MIN_DISTINCT_LOCATIONS:
+        raise SoilDataError(
+            f"All samples come from only {n_locations} location(s); at least "
+            f"{config.MIN_DISTINCT_LOCATIONS} different locations are needed to interpolate "
+            "between them.")
 
 
 def assess_field(
@@ -269,24 +311,34 @@ def assess_field(
         exclude_outliers: Leave flagged outliers out of the maps.
 
     Raises:
-        ValueError: if cleaning fails or leaves no usable rows.
+        SoilDataError: if the data cannot be used (see check_usable), or no
+            soil property has enough values.
     """
     clean, cleaning = clean_soil_data(raw)
-    if clean.empty:
-        raise ValueError("no rows are left after cleaning (check the coordinates).")
+    check_usable(clean, cleaning)
 
     grid_x, grid_y = make_grid()
-    powers, cv_tables, grids = {}, {}, {}
+    powers, cv_tables, grids, n_values = {}, {}, {}, {}
     for prop in config.NUMERIC_COLUMNS:
         xy, values = property_samples(clean, prop, exclude_outliers)
+        n_values[prop] = int((~np.isnan(values)).sum())
+        if n_values[prop] < config.MIN_SAMPLES_FOR_MAP:
+            powers[prop], cv_tables[prop] = None, None        # not available
+            grids[prop] = np.full(grid_x.shape, np.nan)
+            continue
         cv_tables[prop] = cross_validate(xy, values)
         powers[prop] = manual_power if manual_power is not None else best_power(cv_tables[prop])
         grids[prop] = interpolate_property(clean, prop, powers[prop], exclude_outliers)
 
+    if all(power is None for power in powers.values()):
+        raise SoilDataError(
+            f"No soil property has at least {config.MIN_SAMPLES_FOR_MAP} values, so no map can "
+            "be drawn. Check that the pH, nitrogen, phosphorus and salinity columns contain numbers.")
+
     class_grid, limiting_grid = classify_fertility(grids)
     parcels = parcel_report(grids, class_grid, clean, grid_x, grid_y)
     return FieldAssessment(clean, cleaning, exclude_outliers, manual_power, powers, cv_tables,
-                           grid_x, grid_y, grids, class_grid, limiting_grid, parcels)
+                           grid_x, grid_y, grids, class_grid, limiting_grid, parcels, n_values)
 
 
 def field_summary(assessment: FieldAssessment) -> dict:
@@ -311,4 +363,5 @@ def field_summary(assessment: FieldAssessment) -> dict:
                              for name in config.FERTILITY_CLASSES},
         "n_parcels": len(assessment.parcels),
         "main_limiting_factor": main_factor,
+        "unavailable": assessment.unavailable,
     }

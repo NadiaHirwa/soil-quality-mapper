@@ -359,3 +359,22 @@ PDF_TABLE_COLUMNS = {                # report column -> short PDF header
     "pct_moderate": "Moderate %", "pct_poor": "Poor %", "overall_class": "Class",
     "main_limiting_factor": "Limiting factor", "n_samples": "Samples",
 }
+
+# ---------------------------------------------------------------------------
+# Input limits and minimums (Stage 11) - our design choices
+# ---------------------------------------------------------------------------
+FIELD_LOCATION_NAME = "near Rwamagana, Eastern Province, Rwanda"
+
+# Without these a row cannot be placed on the map. The other columns are
+# optional: if one is missing it is added empty and reported.
+REQUIRED_COLUMNS = ["sample_id", "latitude", "longitude"]
+
+# One field has ~100 samples; 10x that is plenty. The limits also protect the
+# app's memory: the outlier check builds an (n x n) distance table and IDW a
+# (grid points x n) table, so n = 1000 already needs ~65 MB per table.
+MAX_UPLOAD_MB = 2.0
+MAX_ROWS = 1000
+
+MIN_SAMPLES_FOR_MAP = 3                               # IDW + leave-one-out need >= 3 values
+MIN_SAMPLES_FOR_OUTLIER_CHECK = OUTLIER_NEIGHBOURS + 1  # 6 neighbours + the sample itself
+MIN_DISTINCT_LOCATIONS = 3                            # cannot interpolate between fewer places

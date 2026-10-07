@@ -266,10 +266,16 @@ def plot_all_property_maps(
 
     Args:
         grids: Property name -> IDW grid.
-        powers: Property name -> IDW power used for that grid.
+        powers: Property name -> IDW power used for that grid (None = not
+            available; the panel then says so instead of drawing a map).
     """
     fig, axes = plt.subplots(2, 2, figsize=config.FIGSIZE_MAP_GRID, layout="constrained")
     for ax, prop in zip(axes.flat, config.NUMERIC_COLUMNS):
+        if powers[prop] is None:  # property not available: too few values
+            ax.text(0.5, 0.5, f"{config.PROPERTY_LABELS[prop]}\nnot available (too few values)",
+                    ha="center", va="center", transform=ax.transAxes, color=config.INK_COLOR)
+            ax.set_axis_off()
+            continue
         image = _draw_map(ax, grid_x, grid_y, grids[prop], samples, prop, powers[prop],
                           exclude_outliers)
         fig.colorbar(image, ax=ax, label=config.PROPERTY_LABELS[prop], shrink=0.8)
@@ -369,8 +375,12 @@ def plot_distributions(
     fig, axes = plt.subplots(2, 2, figsize=config.FIGSIZE_DISTRIBUTIONS, layout="constrained")
     for ax, prop in zip(axes.flat, config.NUMERIC_COLUMNS):
         values = property_values(samples, prop, exclude_outliers).dropna()
-        sns.histplot(values, kde=True, bins=15, color=config.POINT_COLOR,
-                     edgecolor="white", ax=ax)
+        if len(values) < 2:  # nothing to draw a distribution from
+            ax.text(0.5, 0.5, "not available (too few values)", ha="center", va="center",
+                    transform=ax.transAxes, color=config.INK_COLOR)
+        else:
+            sns.histplot(values, kde=len(values) >= 3, bins=15, color=config.POINT_COLOR,
+                         edgecolor="white", ax=ax)
         ax.set_xlabel(config.PROPERTY_LABELS[prop])
         ax.set_ylabel("Number of samples")
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))  # counts are whole numbers

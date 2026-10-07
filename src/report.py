@@ -44,7 +44,8 @@ def _title_page(assessment: FieldAssessment, data_source: str, created: date) ->
     summary = field_summary(assessment)
     area = summary["pct_area"]
     parcels = summary["parcels_by_class"]
-    power_text = ", ".join(f"{p} {assessment.powers[p]:g}" for p in config.NUMERIC_COLUMNS)
+    power_text = ", ".join(f"{p} {assessment.powers[p]:g}" if assessment.available(p)
+                           else f"{p} not available" for p in config.NUMERIC_COLUMNS)
     sections = [
         ("Field and data", [
             config.FIELD_DESCRIPTION,
@@ -132,8 +133,14 @@ def build_pdf_report(
         lambda: plot_limiting_factor_map(a.grid_x, a.grid_y, a.limiting_grid),
     ]
     for prop in config.NUMERIC_COLUMNS:
-        pages.append(lambda p=prop: plot_property_map(a.grid_x, a.grid_y, a.grids[p], a.clean, p,
-                                                      a.powers[p], a.exclude_outliers))
+        if a.available(prop):
+            pages.append(lambda p=prop: plot_property_map(a.grid_x, a.grid_y, a.grids[p], a.clean,
+                                                          p, a.powers[p], a.exclude_outliers))
+        else:  # keep one page per property, so the page count never changes
+            pages.append(lambda p=prop: _text_page(f"{config.PROPERTY_LABELS[p]}: not available", [
+                ("Why", [f"Only {a.n_values[p]} sample(s) have a value; at least "
+                         f"{config.MIN_SAMPLES_FOR_MAP} are needed for a map. The fertility "
+                         "classes in this report use the other properties only."])]))
     methods = lambda: _text_page("Methods, assumptions and limitations", [
         ("Method", config.METHOD_STEPS),
         ("Key assumptions", config.KEY_ASSUMPTIONS),

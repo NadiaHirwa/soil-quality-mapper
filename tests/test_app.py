@@ -92,3 +92,8 @@ def test_every_tab_has_content_and_no_figures_stay_open():
         assert len(tab.children) > 0, tab.label
     assert len(app.metric) >= 6  # Overview key numbers (+ cleaning summary)
     assert plt.get_fignums() == []
+
+
+def test_configured_field_location_is_shown(app):
+    captions = " ".join(c.value for c in app.sidebar.caption)
+    assert f"{config.ORIGIN_LAT:.4f}" in captions and "Rwamagana" in captions
