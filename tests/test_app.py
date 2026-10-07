@@ -65,3 +65,16 @@ def test_no_figures_left_open_after_app_runs():
     app.sidebar.selectbox[0].select("salinity").run()
     assert not app.exception
     assert plt.get_fignums() == []
+
+
+def test_fertility_and_export_tabs_render(app):
+    assert not app.exception
+    assert app.warning  # the "not agronomic advice" disclaimer is shown
+    # Exactly one table on the page is the parcel report, with 20 parcels.
+    parcel_tables = [df for df in app.dataframe if "overall_class" in df.value.columns]
+    assert len(parcel_tables) == 1 and len(parcel_tables[0].value) == 20
+    # Export tab: one download button for the CSV, one for the PNG.
+    assert len(app.get("download_button")) == 2
+    for power_mode in ["Manual", "Auto (cross-validation)"]:
+        app.sidebar.radio[1].set_value(power_mode).run()
+        assert not app.exception

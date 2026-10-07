@@ -244,3 +244,64 @@ SCALE_BAR_M = 100.0                  # length of the map scale bar
 
 # Resolution of plot images shown in the app.
 APP_FIGURE_DPI = 130
+
+# ---------------------------------------------------------------------------
+# Fertility rules (Stage 9) - reference crop: MAIZE
+#
+# Each property is split into bands [lower, upper): a value exactly on a
+# boundary belongs to the band that STARTS there. Codes: 0 Good, 1 Moderate,
+# 2 Poor (higher = worse). Sources and their status are listed in README.md
+# ("Fertility rules"). "to verify" = the group must check the primary source.
+# ---------------------------------------------------------------------------
+FERTILITY_CLASSES = ["Good", "Moderate", "Poor"]
+INF = float("inf")
+
+FERTILITY_BANDS = {
+    # pH: boundaries follow the USDA Soil Survey Manual reaction classes
+    # (Soil Science Division Staff 2017) - verified (secondary).
+    # Mapping classes to maize Good/Moderate/Poor is an ASSUMPTION - to verify:
+    # Good = moderately acid to neutral (5.6-7.3), Moderate = strongly acid
+    # (5.1-5.5) or slightly alkaline (7.4-7.8), Poor = beyond those.
+    "pH": [(-INF, 5.1, "Poor"), (5.1, 5.6, "Moderate"), (5.6, 7.4, "Good"),
+           (7.4, 7.9, "Moderate"), (7.9, INF, "Poor")],
+    # Nitrogen = nitrate-N (mg/kg), interpreted with the pre-sidedress nitrate
+    # test for corn (Magdoff et al. 1984): ~25 mg/kg = sufficient, < 10 = low.
+    # Values verified (secondary, extension guide). Using a US maize test for
+    # this field is an ASSUMPTION - to verify for Rwandan conditions.
+    "nitrogen": [(-INF, 10.0, "Poor"), (10.0, 25.0, "Moderate"), (25.0, INF, "Good")],
+    # Phosphorus = Mehlich-3 P (mg/kg = ppm), Iowa State PM 1688 categories for
+    # corn: Very Low 0-8 -> Poor, Low 9-15 -> Moderate, Optimum and above
+    # (>= 16) -> Good. Verified (secondary). Iowa calibration - to verify locally.
+    "phosphorus": [(-INF, 9.0, "Poor"), (9.0, 16.0, "Moderate"), (16.0, INF, "Good")],
+    # Salinity = ECe in dS/m (EC of the saturated paste extract) - our EC is
+    # ASSUMED to be ECe. Soil Survey Manual classes: nonsaline < 2 -> Good,
+    # very slightly saline 2-4 -> Moderate, >= 4 (saline, Richards 1954) -> Poor.
+    # Numbers seen only in search summaries of NRCS documents - to verify.
+    "salinity": [(-INF, 2.0, "Good"), (2.0, 4.0, "Moderate"), (4.0, INF, "Poor")],
+}
+
+# Limiting-factor codes: 0 none, 1-4 the property, 5 several properties tie.
+LIMITING_FACTOR_LABELS = ["None (all Good)", "pH", "Nitrogen", "Phosphorus", "Salinity", "Several"]
+
+# ---------------------------------------------------------------------------
+# Parcels and report (Stage 9)
+# ---------------------------------------------------------------------------
+PARCEL_SIZE_M = 100.0        # 100 m x 100 m = 1 ha -> 5 x 4 = 20 parcels
+# Parcel class = worst class covering at least this share of the parcel, so a
+# few noisy grid cells cannot decide it alone. ASSUMPTION (our design choice).
+PARCEL_MIN_CLASS_SHARE = 0.10
+PARCEL_FEW_SAMPLES = 3       # fewer real samples inside -> "less certain" hint
+
+FERTILITY_NOTES = {
+    "pH": "pH limiting: liming may be worth investigating.",
+    "nitrogen": "Nitrogen limiting: N supply (fertiliser or organic inputs) may be worth investigating.",
+    "phosphorus": "Phosphorus limiting: P supply may be worth investigating.",
+    "salinity": "Salinity limiting: drainage and salt management may be worth investigating.",
+}
+REPORT_DISCLAIMER = ("Indicative only, based on synthetic data and simplified thresholds. "
+                     "Not agronomic advice.")
+
+# Okabe-Ito colours (Okabe & Ito 2008), designed to be colour-blind safe.
+FERTILITY_COLORS = ["#0072B2", "#F0E442", "#D55E00"]          # Good, Moderate, Poor
+LIMITING_FACTOR_COLORS = ["#DDDDDD", "#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#555555"]
+PARCEL_LINE_COLOR = "#222222"

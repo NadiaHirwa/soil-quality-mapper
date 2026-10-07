@@ -11,11 +11,14 @@ import pandas as pd
 import seaborn as sns
 from matplotlib import patheffects
 from matplotlib.axes import Axes
+from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.figure import Figure
 from matplotlib.image import AxesImage
+from matplotlib.patches import Patch, Rectangle
 from matplotlib.ticker import MaxNLocator
 
 from src import config
+from src.fertility import parcel_bounds
 from src.geo import latlon_to_metres
 
 # One theme for every plot in the project, set in one place.
@@ -374,3 +377,67 @@ def plot_distributions(
         ax.set_title(f"n = {len(values)}")
     fig.suptitle("Distribution of each soil property")
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Stage 9: fertility and limiting-factor maps
+# ---------------------------------------------------------------------------
+
+
+def _draw_category_map(
+    grid_x: np.ndarray,
+    grid_y: np.ndarray,
+    codes: np.ndarray,
+    labels: list[str],
+    colors: list[str],
+    title: str,
+) -> Figure:
+    """Map of category codes 0..n-1 with parcel boundaries, IDs and a legend."""
+    fig, ax = plt.subplots(figsize=config.FIGSIZE_MAP, layout="constrained")
+    extent = (grid_x.min(), grid_x.max(), grid_y.min(), grid_y.max())
+    # One fixed colour per category code, so a class keeps its colour even
+    # when some classes are absent from the map.
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm(np.arange(len(colors) + 1) - 0.5, len(colors))
+    ax.imshow(codes, origin="lower", extent=extent, aspect="equal", cmap=cmap, norm=norm,
+              interpolation="nearest")
+
+    for parcel in parcel_bounds().itertuples():
+        ax.add_patch(Rectangle((parcel.x_min_m, parcel.y_min_m),
+                               parcel.x_max_m - parcel.x_min_m, parcel.y_max_m - parcel.y_min_m,
+                               fill=False, edgecolor=config.PARCEL_LINE_COLOR, linewidth=1))
+        ax.text((parcel.x_min_m + parcel.x_max_m) / 2, (parcel.y_min_m + parcel.y_max_m) / 2,
+                parcel.parcel_id, ha="center", va="center", fontsize=9, fontweight="bold",
+                color=config.INK_COLOR, path_effects=HALO)
+
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
+    ax.grid(False)
+    ax.set_xlabel("x (m east of SW corner)")
+    ax.set_ylabel("y (m north of SW corner)")
+    ax.set_title(title)
+    add_scale_bar(ax)
+    add_north_arrow(ax)
+
+    # Legend lists only the categories present, plus their share of the field.
+    handles = [Patch(facecolor=color, edgecolor=config.SAMPLE_EDGE_COLOR,
+                     label=f"{label} ({100 * (codes == code).mean():.0f}%)")
+               for code, (label, color) in enumerate(zip(labels, colors)) if (codes == code).any()]
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.11),
+              ncol=min(len(handles), 3), frameon=False, fontsize=9)
+    fig.suptitle(_origin_caption() + " Parcels: 100 m x 100 m (1 ha).", fontsize=9,
+                 color=config.INK_COLOR)
+    return fig
+
+
+def plot_fertility_map(grid_x: np.ndarray, grid_y: np.ndarray, class_grid: np.ndarray) -> Figure:
+    """Overall fertility class per grid cell (worst of the four properties) with parcels."""
+    return _draw_category_map(grid_x, grid_y, class_grid, config.FERTILITY_CLASSES,
+                              config.FERTILITY_COLORS,
+                              "Fertility class for maize (worst of pH, N, P, salinity)")
+
+
+def plot_limiting_factor_map(grid_x: np.ndarray, grid_y: np.ndarray, limiting_grid: np.ndarray) -> Figure:
+    """Which property sets the fertility class in each grid cell, with parcels."""
+    return _draw_category_map(grid_x, grid_y, limiting_grid, config.LIMITING_FACTOR_LABELS,
+                              config.LIMITING_FACTOR_COLORS, "Limiting factor")

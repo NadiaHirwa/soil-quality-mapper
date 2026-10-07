@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 
 from src import config
 from src.cleaning import clean_soil_data, load_raw_csv
+from src.fertility import classify_fertility, parcel_report
 from src.interpolation import (
     best_power,
     cross_validate,
@@ -30,6 +31,8 @@ from src.plots import (
     plot_all_property_maps,
     plot_correlation_heatmap,
     plot_distributions,
+    plot_fertility_map,
+    plot_limiting_factor_map,
     plot_observed_vs_predicted,
     plot_property_map,
     plot_rmse_vs_power,
@@ -146,6 +149,38 @@ def distributions_png(clean: pd.DataFrame, exclude_outliers: bool) -> bytes:
 @st.cache_data
 def correlation_png(clean: pd.DataFrame, exclude_outliers: bool) -> bytes:
     return to_png(plot_correlation_heatmap(clean, exclude_outliers))
+
+
+# ---------------------------------------------------------------------------
+# Fertility (Stage 9)
+# ---------------------------------------------------------------------------
+
+
+@st.cache_data
+def run_fertility(
+    clean: pd.DataFrame, manual_power: float | None, exclude_outliers: bool
+) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
+    """Class grid, limiting-factor grid and parcel report, from all four maps."""
+    grid_x, grid_y = make_grid()
+    grids = {}
+    for p in config.NUMERIC_COLUMNS:
+        grids[p] = run_interpolation(clean, p, power_for(clean, p, manual_power, exclude_outliers),
+                                     exclude_outliers)
+    class_grid, limiting_grid = classify_fertility(grids)
+    report = parcel_report(grids, class_grid, clean, grid_x, grid_y)
+    return class_grid, limiting_grid, report
+
+
+@st.cache_data
+def fertility_map_png(class_grid: np.ndarray) -> bytes:
+    grid_x, grid_y = make_grid()
+    return to_png(plot_fertility_map(grid_x, grid_y, class_grid))
+
+
+@st.cache_data
+def limiting_map_png(limiting_grid: np.ndarray) -> bytes:
+    grid_x, grid_y = make_grid()
+    return to_png(plot_limiting_factor_map(grid_x, grid_y, limiting_grid))
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +324,41 @@ with tab_validation:
         "IDW predicts better than simply using the mean of the other samples."
     )
 
+class_grid, limiting_grid, parcels = run_fertility(clean, manual_power, exclude_outliers)
+
 with tab_fertility:
-    st.info("Fertility classes and parcel evaluation will appear here (Stage 9).")
+    st.warning(config.REPORT_DISCLAIMER)
+    st.write(
+        "Each grid cell gets the **worst** class of its four properties (law of the minimum). "
+        "Thresholds are for maize; their sources are listed in the README (Fertility rules)."
+    )
+    col_class, col_limit = st.columns(2)
+    with col_class:
+        st.image(fertility_map_png(class_grid))
+    with col_limit:
+        st.image(limiting_map_png(limiting_grid))
+
+    st.subheader("Parcel evaluation (100 m x 100 m, 1 ha each)")
+    st.caption(
+        f"Parcel class = worst class covering at least "
+        f"{config.PARCEL_MIN_CLASS_SHARE:.0%} of the parcel. Numbered from the north-west "
+        f"corner (P01), left to right, then row by row southwards. n_samples = real samples "
+        f"inside the parcel; fewer than {config.PARCEL_FEW_SAMPLES} means a less certain estimate."
+    )
+    st.dataframe(parcels, hide_index=True)
 
 with tab_export:
-    st.info("Downloadable parcel reports will appear here (Stages 9-10).")
+    st.write("Download the parcel evaluation and the fertility map.")
+    st.download_button(
+        "Download parcel report (CSV)",
+        data=parcels.to_csv(index=False).encode("utf-8"),
+        file_name="parcel_report.csv",
+        mime="text/csv",
+    )
+    st.download_button(
+        "Download fertility map (PNG)",
+        data=fertility_map_png(class_grid),
+        file_name="fertility_map.png",
+        mime="image/png",
+    )
+    st.caption(config.REPORT_DISCLAIMER)
